@@ -2,78 +2,20 @@
 
 int x = 0;
 int y = 0;
-volatile boolean writeFlag = false;
-volatile boolean OEFlag = false;
-int readBinaryInput() {
-  int x = 0;
-  bitWrite(x, 0, digitalRead(2));
-  bitWrite(x, 1, digitalRead(3));
-  bitWrite(x, 2, digitalRead(4));
-  bitWrite(x, 3, digitalRead(5));
-  bitWrite(x, 4, digitalRead(6));
-  bitWrite(x, 5, digitalRead(7));
-  bitWrite(x, 6, digitalRead(8));
-  bitWrite(x, 7, digitalRead(9));
-  return x;
+char* string2char(String command){
+    if(command.length()!=0){
+        char *p = const_cast<char*>(command.c_str());
+        return p;
+    }
 }
-
-int getYValueFromInputs() {
-  int y = 0;
-  bitWrite(y, 0, digitalRead(10));
-  bitWrite(y, 1, digitalRead(11));
-  bitWrite(y, 2, digitalRead(12));
-  bitWrite(y, 3, digitalRead(13));
-  bitWrite(y, 4, digitalRead(A0));
-  bitWrite(y, 5, digitalRead(A1));
-  bitWrite(y, 6, digitalRead(A2));
-  bitWrite(y, 7, digitalRead(A3));
-  return y;
-}
-
-void outputY() {
-  pinMode(10, OUTPUT);
-  pinMode(11, OUTPUT);
-  pinMode(12, OUTPUT);
-  pinMode(13, OUTPUT);
-  pinMode(A0, OUTPUT);
-  pinMode(A1, OUTPUT);
-  pinMode(A2, OUTPUT);
-  pinMode(A3, OUTPUT);
-
-  digitalWrite(10, bitRead(y, 0));
-  digitalWrite(11, bitRead(y, 1));
-  digitalWrite(12, bitRead(y, 2));
-  digitalWrite(13, bitRead(y, 3));
-  digitalWrite(A0, bitRead(y, 4));
-  digitalWrite(A1, bitRead(y, 5));
-  digitalWrite(A2, bitRead(y, 6));
-  digitalWrite(A3, bitRead(y, 7));
-}
-
-void setOutputMode() {
-  if (digitalRead(A5) == LOW) {
-    outputY();
-    OEFlag = true;
-  } else {
-    OEFlag = false;
-    pinMode(10, INPUT);
-    pinMode(11, INPUT);
-    pinMode(12, INPUT);
-    pinMode(13, INPUT);
-    pinMode(A0, INPUT);
-    pinMode(A1, INPUT);
-    pinMode(A2, INPUT);
-    pinMode(A3, INPUT);
-  }
-}
-
-void writeYToEEPROM() {
-  writeFlag = true;
+int htoInt(char hexValue[]) {
+  return (int) strtol(hexValue, 0, 16);
 }
 void setup() {
   Serial.begin(9600);
-  pinMode(A4, INPUT_PULLUP);
-  pinMode(A5, INPUT_PULLUP);
+  DDRD = (DDRD & 0b00000011) | (0b00000000);
+  DDRB = 0b11111100;
+  DDRC = (DDRC & 0b00001111) | 0b11110000;
   pinMode(10, OUTPUT);
   pinMode(11, OUTPUT);
   pinMode(12, OUTPUT);
@@ -82,9 +24,6 @@ void setup() {
   pinMode(A1, OUTPUT);
   pinMode(A2, OUTPUT);
   pinMode(A3, OUTPUT);
-  
-  attachInterrupt(digitalPinToInterrupt(A4), writeYToEEPROM, FALLING);
-  attachInterrupt(digitalPinToInterrupt(A5), setOutputMode, CHANGE);
 }
 
 void loop() {
@@ -92,55 +31,78 @@ void loop() {
     String input = Serial.readStringUntil('\n');
     input.trim(); // remove any leading/trailing whitespace
     char opp = input.charAt(0);
-    int addr = input.substring(2, 5).toInt();
-    int val = input.substring(6).toInt();
+    int addr = htoInt(string2char(input.substring(2, 4)));
+    int val = htoInt(string2char(input.substring(5)));
+    Serial.println(input.substring(2, 4));
     Serial.print("Opp code: ");
     Serial.println(opp);
     if (opp == 'W') {
       EEPROM.write(addr, val);
       Serial.print("Written ");
-      Serial.print(val);
+      Serial.print("0x");
+      if(val< 0x10) Serial.print("0");
+      Serial.print(val, HEX);
       Serial.print(" to address ");
-      Serial.println(addr);
+      Serial.print("0x");
+      if(addr < 0x10) Serial.print("0");
+      Serial.println(addr, HEX);
     } 
     else if (opp == 'r') {
       int read_val = EEPROM.read(addr);
+      Serial.print("0x");
+      if(addr < 0x10) Serial.print("0");
       Serial.print(addr, HEX);
       Serial.print(": ");
-      Serial.println(read_val);
+      Serial.print("0x");
+      if(read_val < 0x10) Serial.print("0");
+      Serial.println(read_val, HEX);
     }
     else if (opp == 'R') {
       int i;
       int line_count = 0;
+      Serial.print("0x");
+      if(addr < 0x10) Serial.print("0");
       Serial.print(addr, HEX);
       Serial.print(": ");
-      for (i = addr; i < addr + 255; i++) {
+      for (i = addr; i <= addr + 255; i++) {
         int val = EEPROM.read(i);
-        Serial.print(val);
+        if(val < 0x10) Serial.print("0");
+        Serial.print(val, HEX);
         Serial.print(" ");
         line_count++;
         if (line_count == 8) {
           Serial.print("\t");
         }
         if (line_count == 16) {
-          Serial.println();
           line_count = 0;
-          Serial.print(addr + (i - addr + 1), HEX);
-          Serial.print(": ");
+          if(i != addr + 255) {
+            Serial.println();
+            Serial.print("0x");
+            if(addr + (i - addr + 1) < 0x10) Serial.print("0");
+            Serial.print(addr + (i - addr + 1), HEX);
+            Serial.print(": ");
+          }
         }
       }
       Serial.println();
+    }else if(opp == 'e') {
+       Serial.println("Erasing EEPROM...");
+       for(int i = 0; i <= 255; i++) EEPROM.write(i, addr);
+       Serial.println("Done erasing...");
+       Serial.print("Erase byte: ");
+       Serial.println(addr);
+    } else if(opp == 't') {
+      for(int i = 0; i <= 255; i+=2) EEPROM.write(i, 0xAA);
+      for(int i = 1; i <= 255; i+=2) EEPROM.write(i, 0x55);
     }
   }
   
-  x = readBinaryInput();
-  if (writeFlag) {
-    writeFlag = false;
-    EEPROM.write(x, getYValueFromInputs());
-  } else {
-    if(OEFlag) {
-      y = EEPROM.read(x);
-      outputY();
-    }
-  }
+  int x = 0;
+  x |= (PIND & 0b00001100) >> 2; // reads the value of pins 2 and 3 and sets the 0th and 1st bits of x
+  x |= (PIND & 0b00110000) >> 2; // reads the value of pins 4 and 5, shifts the result by 2, and sets the 2nd and 3rd bits of x
+  x |= (PIND & 0b11000000) >> 2; // reads the value of pins 6 and 7, shifts the result by 4, and sets the 4th and 5th bits of x
+  x |= (PINB & 0b00000011) << 6; // reads the value of pins 8 and 9, shifts the result by 6, and sets the 6th and 7th bits of x
+  y = EEPROM.read(x);
+  PORTB = (PORTB & B11000000) | ((y & B00001111) << 2);
+  PORTC = (PORTC & B11110000) | ((y >> 4) & B00001111);
 }
